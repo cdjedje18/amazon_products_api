@@ -2,13 +2,22 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view
 import requests
 from bs4 import BeautifulSoup
+from rest_framework import status
 
 
+def make_pager_info(pagination_wrapper, current_page, data_per_page):
+    
+    return {
+        'pageCount': int(pagination_wrapper[-2].text),
+        'pageSize': data_per_page,
+        'page': int(current_page)
+    }
 
-def extract_data_from_page(search_params):
+
+def extract_data_from_page(search_params, current_page):
     baseUrl = "https://www.amazon.com"
 
-    url = baseUrl+"/s?k=joker+t+shirts+for+men&sprefix=joker+t+s%2Caps%2C503&ref=nb_sb_ss_mission-aware-v1_1_9"
+    url = f"{baseUrl}/s?k={search_params}&page={current_page}"
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0',
@@ -21,7 +30,7 @@ def extract_data_from_page(search_params):
     page = BeautifulSoup(html_page, 'lxml')
 
     products_wrapper = page.find_all('div', {'class': 's-result-item', 'data-component-type': 's-search-result'})
-    # pagination_wrapper = page.find_all(class_="s-pagination-item")
+    pagination_wrapper = page.find_all(class_="s-pagination-item")
     # print(pagination_wrapper[-2].text)
 
     new_products = []
@@ -43,15 +52,24 @@ def extract_data_from_page(search_params):
 
         new_products.append(new_product)
     
-    return new_products
+
+    pager_data = make_pager_info(pagination_wrapper, current_page, len(new_products))
+    
+    return {'pager': pager_data, 'data': new_products}
 
 
 
 @api_view(['GET'])
 def get_products(request):
-    # search_params = request.GET['search']
-    data = extract_data_from_page(None)
-    # print(data)
-    return JsonResponse(data=data, safe=False)
+    
+    if 'search' in request.GET:
+        search_params = request.GET['search']
+        page = request.GET['page'] if 'page' in request.GET else 1
+
+        data = extract_data_from_page(search_params, page)
+        return JsonResponse(data=data, safe=False)
+    
+    return JsonResponse(data={"message": "Missing mandatory paramenter search"}, safe=False, status=status.HTTP_400_BAD_REQUEST)
+
 
 
